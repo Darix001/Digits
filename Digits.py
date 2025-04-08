@@ -93,7 +93,7 @@ class Digits(abc.Sequence):
                 
                 return cls(x, size * times)
             else:
-                return self
+                raise ValueError("Can't multiply Digits(0)")")
         else:
             return ()
 
@@ -103,7 +103,7 @@ class Digits(abc.Sequence):
             if x := self._x:
                 return cls(x * (10 ** size) + obj._x, obj._size + self._size)
             else:
-                return obj
+                raise ValueError("Invalid Operation Digits(0) + Digits(x)")
         else:
             return NotImplemented
 
