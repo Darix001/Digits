@@ -93,7 +93,7 @@ class Digits(abc.Sequence):
                 
                 return cls(x, size * times)
             else:
-                raise ValueError("Can't multiply Digits(0)")")
+                raise ValueError("Can't multiply Digits(0)")
         else:
             return ()
 
