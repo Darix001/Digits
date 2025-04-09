@@ -123,7 +123,7 @@ class Digits(abc.Sequence):
             return self
 
     @classmethod
-    def from_iterable(cls, iterable:abc.Iterable[int], digitsize=0, /):
+    def from_iterable(cls, iterable:abc.Iterable[int], digitsize:int=0, /):
         #Check if the sequence has items
         for start in (iterable := iter(iterable)):
             break
