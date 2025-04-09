@@ -82,7 +82,6 @@ class Digits(abc.Sequence):
         return hash_value
 
     def __mul__(self, times, /):
-        cls = type(self)
         if times > 0:
             if x := self._x:
                 base = 10 ** self._size
@@ -91,7 +90,7 @@ class Digits(abc.Sequence):
                 for _ in range(times - 1):
                     x =  x * base + original
                 
-                return cls(x, size * times)
+                return type(self)(x, size * times)
             else:
                 raise ValueError("Can't multiply Digits(0)")
         else:
@@ -124,21 +123,29 @@ class Digits(abc.Sequence):
             return self
 
     @classmethod
-    def from_iterable(cls, iterable:abc.Iterable[int], /):
+    def from_iterable(cls, iterable:abc.Iterable[int], digitsize=0, /):
         #Check if the sequence has items
         for start in (iterable := iter(iterable)):
             break
         else:#return empty tuple if iterable has no items.
             return ()
         
-        for number in iterable:
-            mul = 10 if number in DIGITS else 10 ** (trunc(log10(number)) + 1)
-            start = start * mul + number
-                
+        if digitsize > 0:
+            base = 10 ** digitsize
+            for i, number in enumerate(iterable, 2):
+                start = start * mul + number
+            size = digitsize * i
         else:
-            return (start,)
+            size = 0
+            for number in iterable:
+                mul = 10
+                size += 1
+                if number not in DIGITS:
+                    size += (exp := trunc(log10(number)))
+                    mul **= exp + 1
+                start = start * mul + number
 
-        return cls(start)
+        return cls(start, size)
 
 
     def just(func, /):
