@@ -1,79 +1,97 @@
 import collections.abc as abc
 
 from numbers import Number
-from itertools import islice
 from math import log10, trunc
-from operator import index, countOf, indexOf
-
+from functools import wraps
+from itertools import islice, repeat
+from operator import countOf, indexOf
 
 DIGITS = range(10)
 OPINT = int|None
 
 
+def _mul(x:Number, times:int, ndigits:int, /):
+    base = 10 ** ndigits
+    original = x
+    for _ in range(times - 1):
+        x = x * base + original
+    return x
+
+
+def _concat(x:Number, y:int, y_ndigits:int, /):
+    return x * 10 ** y_ndigits + y
+
+
+
 class Digits(abc.Sequence):
     '''Emulates a list of integers composed by the digits of a number.
     This class is intended for dealing with very large integers numbers.'''
-    __slots__ = ('_x', '_hash', '_size')
+    __slots__ = ('_x', '_hash', '_r', '_is_digit')
 
     def __init__(self, x:int, /, size:OPINT=None):
         self._x = x = abs(x)
+        self._is_digit = is_digit = x in DIGITS
+
         if size is None:
-            if x in DIGITS:
-                self._size = 1
-            else:
-                self._size = trunc(log10(x)) + 1
-        else:
-            self._size = size
+            size = 1
+            if not is_digit:
+                size += trunc(log10(x))
+        
+        self._r = range(size)
 
     def __repr__(self, /):
-        return f"{type(self).__name__}({self._x!r}, size={self._size!r})"
+        return f"{type(self).__name__}({self._x!r}, size={self._r.stop!r})"
 
     def __len__(self, /):
-        return self._size
+        return self._r.stop
 
-    def __iter__(self, /):
-        n = self._size - 1
-        yield (x := self._x) // (div := 10 ** n)
+    def iterfunc(func, /):
+        @wraps(func)
+        def function(self, /):
+            x, size = self._x, self._r.stop
+            return func(x, size) if self._is_digit else repeat(x, size)
+        
+        return function
+
+    @iterfunc
+    def __iter__(x, size, /):
+        n = size - 1
+        yield x // (div := 10 ** n)
         for _ in range(n):
             div //= 10
             yield (x // div) % 10
 
-    def __reversed__(self, /):
-        x = self._x
+    @iterfunc
+    def __reversed__(x, size, /):
         while x: 
             x, mod = divmod(x, 10)
             yield mod
 
     def __getitem__(self, index, /):
-        if isinstance(index, slice):
-            if r := range(*index.indices(size := self._size)):
-                if r.step != 1:
+        x = self._x
+        size = (r := self._r).stop
+        if type(index := r[index]) is range:
+            if r:
+                if index.step != 1:
                     raise ValueError("Step must be 1.")
 
                 else:
-                    x = self._x
-                    
-                    if size != (stop := r.stop):
-                        x //= 10 ** (size - stop)
-                        size = stop
-                    
-                    if (start := r.start):
-                        size -= start
-                        x %= 10 ** size
-
+                    if x:
+                        if size != (stop := index.stop):
+                            x //= 10 ** (size - stop)
+                            size = stop
+                        
+                        if (start := index.start):
+                            size -= start
+                            x %= 10 ** size
+                    else:
+                        size = len(r)
                     return type(self)(x, size)
             else:
                 return r
 
         else:
-            if (index := index(index)) >= 0:
-                index -= self._size
-
-            if result := self._x // 10 ** ~index:
-                return result % 10
-
-            else:
-                raise IndexError("Digit object Index out of range.")
+            return x if self._is_digit else (x // 10 ** ~(index - size)) % 10
 
 
     def __contains__(self, digit, /):
@@ -81,58 +99,84 @@ class Digits(abc.Sequence):
 
     def __hash__(self, /):
         if (hash_value := getattr(self, '_hash', None)) is not None:
-            self._hash = hash_value = hash((self._x, self._size))
+            self._hash = hash_value = hash((self._x, self._r.stop))
         return hash_value
 
     def __mul__(self, times, /):
         if times > 0:
             if x := self._x:
-                base = 10 ** self._size
-                original = x
-                
-                for _ in range(times - 1):
-                    x =  x * base + original
-                
+                size = self._r.stop
+                if not self._is_digit:
+                    x = _mul(x, times, size)
                 return type(self)(x, size * times)
             else:
                 raise ValueError("Can't multiply Digits(0)")
         else:
-            return ()
-
+            return NotImplemented
 
     def __add__(self, obj, /):
         if (cls := type(self)) is type(obj):
-            if x := self._x:
-                return cls(x * (10 ** size) + obj._x, obj._size + self._size)
+            if x := self.x:
+                size = obj._r.stop
+                return cls(_concat(x, obj.x, size), size + self._r.stop)
             else:
                 raise ValueError("Invalid Operation Digits(0) + Digits(x)")
         else:
             return NotImplemented
 
+    def _reverse_slice(self, indices):
+        if (stop := indices.stop) == -1:
+            stop = None
+        return islice(reversed(self), stop, indices.start)
+
     @property
     def x(self):
-        return self._x
+        x = self._x
+        return _mul(x, self._r.stop, 1) if self._is_digit else x
 
     def index(func, /):
         def function(self, digit:Number, /, start:int=0, stop:OPINT=None
             ) -> int:
-            return func(self, DIGITS.index(digit), start, stop)
+            return func(self, DIGITS.index(digit), start, stop,
+                self._r)
         return function
 
     @index
-    def rindex(self, digit, start, stop):
-        return ~indexOf(reversed(self), digit) % self._size
-
-    index = abc.Sequence.index
-
-    def count(self, digit:int, /) -> int:
-        return countOf(reversed(self), digit) if digit in DIGITS else 0
-
-    def add_zeros(self, zeros:int, /):
-        if zeros > 0 and (x := self._x):
-            return type(self)(x * (10 ** width), width)
+    def rindex(self, digit, start, stop, indices, /):
+        if self._is_digit:
+            if self._x == digit:
+                return indices[-1]
+        
+        elif rindices := indices[::-1][start:stop]:   
+            return ~indexOf(self._reverse_slice(rindices),
+                digit) % indices.stop
+        
         else:
-            return self
+            raise IndexError("Digit not in Digits object.")
+
+
+    def index(self, digit, start, stop, indices, /):
+        if self._is_digit:
+            if self._x == digit:
+                return 0
+
+        elif indices := indices[start:stop]:
+            return indexOf(islice(self, indices.start, indices.stop), digit)
+        
+        else:
+            raise IndexError("Digit not in Digits object.")
+
+
+    def count(self, digit:int, /, start:int=0, stop:OPINT=None) -> int:
+        if digit in DIGIT:
+            if indices := self._r[::-1][start:stop]
+                if self._is_digit:
+                    if self._x == digit:
+                        return indices.start
+                else:
+                    return countOf(self._reverse_slice(indices), digit)
+        else:
+            return 0
 
     @classmethod
     def from_iterable(cls, iterable:abc.Iterable[int], digitsize:int=0, /):
@@ -161,38 +205,33 @@ class Digits(abc.Sequence):
 
 
     def just(func, /):
-        def function(self, width:int, filldigit:int=0, /):
-            if filldigit not in DIGITS:
-                raise ValueError("Digit must be 0 <= digit < 10")
-        
-            elif (diff := (width - self._size)) > 0:
-                return func(self, filldigit, diff)
-
+        def function(self, width:int, filldigit:int, /):
+            if width > (size := self._r.stop):
+                x = func(self._x, DIGITS.index(filldigit), width - size, size)
+                return type(self)(x, width)
             else:
                 return self    
         return function
 
     @just
-    def ljust(self, filldigit, diff, /):
+    def ljust(x, filldigit, diff, size, /):
         if filldigit:
-            return self + Digits(filldigit) * diff
+            return _concat(_mul(filldigit, diff, 1), x, size)
         else:
             return self.add_zeros(diff)
 
     @just
-    def rjust(self, filldigit, diff, /):
+    def rjust(x, filldigit, diff, size, /):
         if filldigit:
-            return Digits(filldigit) * diff + self
+            return _concat(x, _mul(filldigit, diff, 1), diff)
         else:
             raise ValueError("Can't add zeros to left.")
 
-
     def index_split(func, /):
         def function(self, i:int, /):
-            if not 0 < (i := index(i)) < (size := self._size):
-                raise IndexError("Index must be 0 < i < len(self)")
-            else:
-                return func(type(self), self._x, i, size, size - i)
+            size = (r := self._r).stop
+            i = r.index(i)
+            return func(type(self), self._x, i, size, size - i)
         return function
 
     @index_split
@@ -200,33 +239,53 @@ class Digits(abc.Sequence):
         x, y = divmod(n, 10 ** index)
         return cls(x, diff), cls(y, index)
 
-
     @index_split
     def split_at(cls, n, diff, size, index, /): 
         x, y = divmod(n, 10 ** index)
         return cls(x, diff), cls(y, index)
 
+    def removesuffix(self, x:Number, /):
+        base = 10
+        n = 1
+        if x not in DIGITS:
+            base **= (n := trunc(log10(x)) + 1)
+        new, suffix = divmod(self._x, base ** exp)
+        return type(self)(new, self._r.stop - n) if suffix == x else self
 
     def endswith(self, n, /, times=1):
-        if times <= 0 or (x := self._x) < (y := n._x):
+        if times <= 0 or (x := self._x) < n:
             return False
 
-        elif x == y:
+        elif x == n:
             return True
-
-        elif n._size == 1:
-            return (x % 10) == y
-
+        
         else:
+            if times == 1 and (is_digit := n in DIGITS):
+                return (x % 10) == y
 
-            base = 10 ** trunc(log10(n)) + 1
-            for _ in range(times):
-                x, mod = divmod(x, base)
-                if mod:
-                    return False
+            else:
+                base = 10
+                
+                if not is_digit:
+                    base **= trunc(log10(n)) + 1
+
+                for _ in range(times):
+                    x, mod = divmod(x, base)
+                    if mod != n:
+                        return False
 
             return True
+
+
+def main():
+    digits = Digits(123456789)
+    print(digits[:2])
+    # print(digits.rindex(9), digits.add_zeros(12), digits.ljust(12, 3),
+    # digits * 2, sep='\n')
+
+
+if __name__ == '__main__':
+    main()
+
 
 del abc
-
-print(Digits(123456789).rsplit_at(6))
