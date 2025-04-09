@@ -1,7 +1,7 @@
 import collections.abc as abc
 
-from operator import index
 from math import log10, trunc
+from operator import index, countOf
 
 
 DIGITS = range(10)
@@ -114,7 +114,7 @@ class Digits(abc.Sequence):
         return super().index(DIGITS.index(digit), start, stop)
 
     def count(self, digit:int, /) -> int:
-        return super().count(digit) if digit in DIGITS else 0
+        return countOf(reversed(self), digit) if digit in DIGITS else 0
 
     def add_zeros(self, zeros:int, /):
         if zeros > 0 and (x := self._x):
