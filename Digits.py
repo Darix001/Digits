@@ -1,10 +1,13 @@
 import collections.abc as abc
 
+from numbers import Number
+from itertools import islice
 from math import log10, trunc
-from operator import index, countOf
+from operator import index, countOf, indexOf
 
 
 DIGITS = range(10)
+OPINT = int|None
 
 
 class Digits(abc.Sequence):
@@ -12,7 +15,7 @@ class Digits(abc.Sequence):
     This class is intended for dealing with very large integers numbers.'''
     __slots__ = ('_x', '_hash', '_size')
 
-    def __init__(self, x:int, /, size:int|None=None):
+    def __init__(self, x:int, /, size:OPINT=None):
         self._x = x = abs(x)
         if size is None:
             if x in DIGITS:
@@ -110,8 +113,17 @@ class Digits(abc.Sequence):
     def x(self):
         return self._x
 
-    def index(self, digit:int, /, start:int=0, stop:int|None=None) -> int:
-        return super().index(DIGITS.index(digit), start, stop)
+    def index(func, /):
+        def function(self, digit:Number, /, start:int=0, stop:OPINT=None
+            ) -> int:
+            return func(self, DIGITS.index(digit), start, stop)
+        return function
+
+    @index
+    def rindex(self, digit, start, stop):
+        return ~indexOf(reversed(self), digit) % self._size
+
+    index = abc.Sequence.index
 
     def count(self, digit:int, /) -> int:
         return countOf(reversed(self), digit) if digit in DIGITS else 0
@@ -160,7 +172,6 @@ class Digits(abc.Sequence):
                 return self    
         return function
 
-
     @just
     def ljust(self, filldigit, diff, /):
         if filldigit:
@@ -168,15 +179,12 @@ class Digits(abc.Sequence):
         else:
             return self.add_zeros(diff)
 
-
     @just
     def rjust(self, filldigit, diff, /):
         if filldigit:
             return Digits(filldigit) * diff + self
         else:
             raise ValueError("Can't add zeros to left.")
-
-    del just
 
 
     def index_split(func, /):
@@ -197,8 +205,6 @@ class Digits(abc.Sequence):
     def split_at(cls, n, diff, size, index, /): 
         x, y = divmod(n, 10 ** index)
         return cls(x, diff), cls(y, index)
-
-    del index_split
 
 
     def endswith(self, n, /, times=1):
